@@ -1,0 +1,30 @@
+#These are command line arguments for local testing as well as deploying to AWS
+
+#For Local Testing
+spark-submit ./business_classifier.py \
+    --num_output_partitions 1 --log_level WARN \
+    ./input/all_wet_CC-MAIN-2017-13.txt business_classifier
+
+#STEP 1 - take a 1% sample of the February 2020 Common Crawl WET (text) 
+#         file (~25M web pages out of 2.5B)
+shuf -n 560 ~/wet.paths-02-2020 > ~/wet.paths-2020-sample
+
+#STEP 2 - Login to AWS
+aws configure
+	-key
+	-pass
+	-Availability Zone: us-east-1a
+
+#STEP 3 - Run the 1% sample using Spark in AWS EMR. Setup for 4 RDD 
+#         partitions across 5 nodes (1 master 4 slave). 
+# 		  Cost is ~$1/hour (4 nodes * $0.25/hr), takes about 2 days to complete.
+#
+#         Ideally I would run this on a 100 node instance but Amazon could not up my 
+#		  limit quickly enough. Best practice is to have the number of cores in the cluster 
+#	      match your partitions. With 100 nodes i would have had 4 cores per server across 
+#	      100 servers, so 400 RDD partitions are needed in order to optimize our run.
+./aws-submit /Users/saleemkhan/Metis/source_code/Projects/Project5/bin/wet.paths-2020-sample my-common-crawl-project subnet-b3a776c5 4 4 5
+
+#STEP 4 - Download the completed Parquet files and review the output
+aws s3 cp s3://my-common-crawl-project/output/business_classification ./ --recursive
+

@@ -1,0 +1,69 @@
+#!/bin/bash
+
+usage() {
+    echo 'Usage: ./aws-submit <local_path_to_input_file> <s3_bucket_name> <subnet_id> <num_input_partitions> <num_output_partitions> <num_ec2_instances>'
+}
+
+if [[ $# != 6 ]] ; then
+    echo 'Invalid number of arguments.'
+    usage
+    exit 0
+fi
+
+if ! [[ -f $1 ]] ; then
+    echo 'Invalid input file.'
+    usage
+    exit 0
+fi
+
+re='^[0-9]+$'
+if ! [[ $4 =~ $re ]] || ! [[ $5 =~ $re ]]; then
+    echo 'Invalid number of input/output partitions.'
+    usage
+    exit 0
+fi
+
+if ! [[ $6 =~ $re ]]; then
+    echo 'Invalid number of instances.'
+    usage
+    exit 0
+fi
+
+TABLE_NAME=business_classification
+S3_BUCKET_NAME=$2
+DRIVER=s3://$S3_BUCKET_NAME/source/business_classifier.py
+
+echo "Cleaning up.."
+aws s3 rm --recursive s3://$S3_BUCKET_NAME/output/$TABLE_NAME
+
+if aws s3api head-bucket --bucket "$S3_BUCKET_NAME" 2>/dev/null;
+then
+    echo "S3 Bucket already exists: $S3_BUCKET_NAME"
+else
+	echo "Creating S3 Bucket: $S3_BUCKET_NAME..."
+    aws s3api create-bucket --bucket $S3_BUCKET_NAME --region us-east-1
+fi
+
+echo "Uploading source files.."
+aws s3 sync . s3://$S3_BUCKET_NAME/source --exclude "*" --include "*.py" --include "*.pkl" --include "install-dependencies.sh"
+
+echo "Uploading input file.."
+aws s3 cp $1 s3://$S3_BUCKET_NAME/input/input.txt
+
+aws emr create-default-roles
+
+echo $3 
+
+aws emr create-cluster \
+     --name “Business-Classification” \
+     --release-label emr-5.17.0 \
+     --instance-type c5.xlarge \
+     --instance-count $6 \
+     --applications Name=Spark \
+     --use-default-roles \
+     --ec2-attributes SubnetId=$3 \
+     --log-uri s3://$S3_BUCKET_NAME/logs \
+     --configuration file://./configurations.json \
+     --bootstrap-actions Path=s3://$S3_BUCKET_NAME/source/install-dependencies.sh \
+     --steps Type=Spark,Name=BusinessClassification,ActionOnFailure=CONTINUE,Args=[--master,yarn,--deploy-mode,cluster,--conf,spark.sql.warehouse.dir=s3://$S3_BUCKET_NAME/output,--files,s3://$S3_BUCKET_NAME/source/businessclassifier.pkl,--py-files,s3://$S3_BUCKET_NAME/source/sparkcc.py,$DRIVER,--num_input_partitions,$4,--num_output_partitions,$5,--log_level,WARN,s3://$S3_BUCKET_NAME/input/input.txt,$TABLE_NAME] \
+     --auto-terminate
