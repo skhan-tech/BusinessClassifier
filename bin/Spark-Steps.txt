@@ -23,7 +23,7 @@ aws configure
 #		  limit quickly enough. Best practice is to have the number of cores in the cluster 
 #	      match your partitions. With 100 nodes i would have had 4 cores per server across 
 #	      100 servers, so 400 RDD partitions are needed in order to optimize our run.
-./aws-submit /Users/saleemkhan/Metis/source_code/Projects/Project5/bin/wet.paths-2020-sample my-common-crawl-project subnet-b3a776c5 4 4 5
+./aws-submit /Users/saleemkhan/Metis/source_code/Projects/Project5/bin/wet.paths-2020-sample my-common-crawl-project subnet-xxxxxxxx 4 4 5
 
 #STEP 4 - Download the completed Parquet files and review the output
 aws s3 cp s3://my-common-crawl-project/output/business_classification ./ --recursive
